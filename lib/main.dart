@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:web_socket_channel/io.dart';
+import 'package:web_socket_channel/web_socket_channel.dart';
 
 void main() {
   runApp(MyApp());
@@ -24,6 +26,9 @@ class MyApp extends StatelessWidget {
       ),
       home: MyHomePage(
         title: 'Flutter Demo Home Page',
+        //10.0.2.2 is actual host for android emulator
+        //channel: IOWebSocketChannel.connect("ws://localhost:8000/chat"),
+        channel: IOWebSocketChannel.connect("ws://10.0.2.2:8000/chat"),
       ),
     );
   }
@@ -31,7 +36,11 @@ class MyApp extends StatelessWidget {
 
 class MyHomePage extends StatefulWidget {
 
-  MyHomePage({Key key, this.title}) : super(key: key);
+  MyHomePage({
+    Key key, 
+    @required this.title, 
+    @required this.channel
+  }) : super(key: key);
 
   // This widget is the home page of your application. It is stateful, meaning
   // that it has a State object (defined below) that contains fields that affect
@@ -43,22 +52,56 @@ class MyHomePage extends StatefulWidget {
   // always marked "final".
 
   final String title;
+  final WebSocketChannel channel;
 
   @override
-  _MyHomePageState createState() => _MyHomePageState();
+  _MyHomePageState createState() {
+    
+    var state = _MyHomePageState();
+    channel.stream.listen(
+      state.onData,
+      onError: state.onError,
+      onDone: state.onDone,
+      cancelOnError:true
+    );
+    return state;
+  }
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
-  void _incrementCounter() {
-    setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
+  TextEditingController _controller = TextEditingController();
+  String _response = '';
+
+  void onData (data) {
+    print(data);
+    this.setState((){
+      _response = data.toString();
     });
+  }
+
+  void onError (error) {
+    this.setState((){
+      _response = 'Error happened: $error';
+    });
+  }
+  
+  void onDone () {
+    this.setState((){
+      _response = 'Connection is closed!';
+    });
+  }
+  
+  void _sendMessage() {
+    print("send message "+_controller.text);
+    if (_controller.text.isNotEmpty) {
+      widget.channel.sink.add('{"action":{"name":"testEcho","data":{"content":"${_controller.text}"}}}');
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.channel.sink.close();
+    super.dispose();
   }
 
   @override
@@ -75,7 +118,8 @@ class _MyHomePageState extends State<MyHomePage> {
         // the App.build method, and use it to set our appbar title.
         title: Text(widget.title),
       ),
-      body: Center(
+      body: Padding(
+        padding: const EdgeInsets.all(20.0),
         // Center is a layout widget. It takes a single child and positions it
         // in the middle of the parent.
         child: Column(
@@ -93,21 +137,24 @@ class _MyHomePageState extends State<MyHomePage> {
           // center the children vertically; the main axis here is the vertical
           // axis because Columns are vertical (the cross axis would be
           // horizontal).
-          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            Text(
-              'You have pushed the button this many times:',
+            Form(
+              child: TextFormField(
+                controller: _controller,
+                decoration: InputDecoration(labelText: 'Send a message'),
+              ),
             ),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.display1,
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 24.0),
+              child: Text(_response),
             ),
           ],
         ),
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
+        onPressed: _sendMessage,
+        tooltip: 'Send message',
         child: Icon(Icons.add),
       ), // This trailing comma makes auto-formatting nicer for build methods.
     );
